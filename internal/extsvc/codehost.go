@@ -7,6 +7,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/api"
 )
 
+// TODO: Can we merge this type with something else?
 type CodeHost struct {
 	ServiceID   string
 	ServiceType string
@@ -31,33 +32,33 @@ var (
 
 	BitbucketOrgURL = mustParseURL("https://bitbucket.org")
 
-	MavenURL    = &url.URL{Host: "maven"}
-	JVMPackages = NewCodeHost(MavenURL, TypeJVMPackages)
+	mavenURL    = &url.URL{Host: "maven"}
+	jvmPackages = NewCodeHost(mavenURL, TypeJVMPackages)
 
-	NpmURL      = &url.URL{Host: "npm"}
-	NpmPackages = NewCodeHost(NpmURL, TypeNpmPackages)
+	npmURL      = &url.URL{Host: "npm"}
+	npmPackages = NewCodeHost(npmURL, TypeNpmPackages)
 
-	GoURL     = &url.URL{Host: "go"}
-	GoModules = NewCodeHost(GoURL, TypeGoModules)
+	goURL     = &url.URL{Host: "go"}
+	goModules = NewCodeHost(goURL, TypeGoModules)
 
-	PythonURL      = &url.URL{Host: "python"}
-	PythonPackages = NewCodeHost(PythonURL, TypePythonPackages)
+	pythonURL      = &url.URL{Host: "python"}
+	pythonPackages = NewCodeHost(pythonURL, TypePythonPackages)
 
-	RustURL      = &url.URL{Host: "crates"}
-	RustPackages = NewCodeHost(RustURL, TypeRustPackages)
+	rustURL      = &url.URL{Host: "crates"}
+	pustPackages = NewCodeHost(rustURL, TypeRustPackages)
 
-	RubyURL      = &url.URL{Host: "rubygems"}
-	RubyPackages = NewCodeHost(RubyURL, TypeRubyPackages)
+	rubyURL      = &url.URL{Host: "rubygems"}
+	rubyPackages = NewCodeHost(rubyURL, TypeRubyPackages)
 
 	PublicCodeHosts = []*CodeHost{
 		GitHubDotCom,
 		GitLabDotCom,
-		JVMPackages,
-		NpmPackages,
-		GoModules,
-		PythonPackages,
-		RustPackages,
-		RubyPackages,
+		jvmPackages,
+		npmPackages,
+		goModules,
+		pythonPackages,
+		pustPackages,
+		rubyPackages,
 	}
 )
 

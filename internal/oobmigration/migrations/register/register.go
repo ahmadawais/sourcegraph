@@ -19,6 +19,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration"
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration/migrations"
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration/migrations/batches"
+	"github.com/sourcegraph/sourcegraph/internal/oobmigration/migrations/codehosts"
 	lsifMigrations "github.com/sourcegraph/sourcegraph/internal/oobmigration/migrations/codeintel/lsif"
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration/migrations/iam"
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration/migrations/insights"
@@ -156,6 +157,7 @@ type dependencies struct {
 
 func registerEnterpriseMigrators(runner *oobmigration.Runner, noDelay bool, deps dependencies) error {
 	migrators := []TaggedMigrator{
+		codehosts.NewMigratorWithDB(deps.store, deps.keyring.ExternalServiceKey),
 		iam.NewSubscriptionAccountNumberMigrator(deps.store, 500),
 		iam.NewLicenseKeyFieldsMigrator(deps.store, 500),
 		iam.NewUnifiedPermissionsMigrator(deps.store),
