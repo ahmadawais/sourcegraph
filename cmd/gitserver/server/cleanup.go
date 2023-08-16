@@ -583,7 +583,7 @@ func cleanupRepos(
 	}
 
 	if diskSizer == nil {
-		diskSizer = gitserver.NewStatDiskSizer()
+		diskSizer = &StatDiskSizer{}
 	}
 	toFree, err := howManyBytesToFree(logger, reposDir, diskSizer, desiredPercentFree)
 	if err != nil {
