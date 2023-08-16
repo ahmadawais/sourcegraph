@@ -110,7 +110,6 @@ func NewClient(db database.DB) Client {
 		userAgent:    filepath.Base(os.Args[0]),
 		operations:   getOperations(),
 		clientSource: getAtomicGitserverConns(logger, db),
-		diskSizer:    NewStatDiskSizer(),
 	}
 }
 
@@ -223,8 +222,6 @@ type clientImplementor struct {
 
 	// clientSource is used to get the corresponding gprc client or address for a given repository
 	clientSource ClientSource
-
-	diskSizer DiskSizer
 }
 
 type RawBatchLogResult struct {
