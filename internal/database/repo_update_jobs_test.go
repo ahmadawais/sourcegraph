@@ -34,12 +34,13 @@ func TestRepoUpdateJobs(t *testing.T) {
 	require.NoError(t, err)
 
 	// Queued job should be successfully created.
-	createdJob, ok, err := store.Create(ctx, RepoUpdateJobOpts{RepoID: 1, Priority: types.HighPriorityRepoUpdate})
+	createdJob, ok, err := store.Create(ctx, RepoUpdateJobOpts{RepoID: 1, Priority: types.HighPriorityRepoUpdate, OverwriteClone: true})
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, 1, createdJob.ID)
 	assert.Equal(t, types.HighPriorityRepoUpdate, createdJob.Priority)
 	assert.Equal(t, "queued", createdJob.State)
+	assert.True(t, createdJob.OverwriteClone)
 
 	wantJob := createdJob
 	// Created job should be listed.
@@ -49,6 +50,7 @@ func TestRepoUpdateJobs(t *testing.T) {
 	gotJob := repoUpdateJobs[0]
 	assert.Equal(t, wantJob.RepoID, gotJob.RepoID)
 	assert.Equal(t, wantJob.Priority, gotJob.Priority)
+	assert.Equal(t, wantJob.OverwriteClone, gotJob.OverwriteClone)
 
 	// Second queued job for the same Repo ID should not be created.
 	_, ok, err = store.Create(ctx, RepoUpdateJobOpts{RepoID: 1, Priority: types.HighPriorityRepoUpdate})

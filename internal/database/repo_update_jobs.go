@@ -49,14 +49,15 @@ func (s *repoUpdateJobStore) Handle() *basestore.Store {
 }
 
 type RepoUpdateJobOpts struct {
-	RepoID       api.RepoID
-	Priority     types.RepoUpdateJobPriority
-	ProcessAfter time.Time
+	RepoID         api.RepoID
+	Priority       types.RepoUpdateJobPriority
+	ProcessAfter   time.Time
+	OverwriteClone bool
 }
 
 const createRepoUpdateJobQueryFmtstr = `
-INSERT INTO repo_update_jobs(repo_id, priority, process_after)
-VALUES (%s, %s, %s)
+INSERT INTO repo_update_jobs(repo_id, priority, process_after, overwrite_clone)
+VALUES (%s, %s, %s, %s)
 ON CONFLICT DO NOTHING
 RETURNING %s
 `
@@ -71,6 +72,7 @@ func createRepoUpdateJobQuery(opts RepoUpdateJobOpts) *sqlf.Query {
 		opts.RepoID,
 		opts.Priority,
 		dbutil.NullTimeColumn(opts.ProcessAfter),
+		opts.OverwriteClone,
 		sqlf.Join(RepoUpdateJobColumns, ", "))
 }
 
@@ -149,7 +151,7 @@ var RepoUpdateJobColumns = []*sqlf.Query{
 	sqlf.Sprintf("repo_update_jobs.execution_logs"),
 	sqlf.Sprintf("repo_update_jobs.worker_hostname"),
 	sqlf.Sprintf("repo_update_jobs.cancel"),
-	// These 5 columns are in both `repo_update_jobs` table and
+	// These 6 columns are in both `repo_update_jobs` table and
 	// `repo_update_jobs_with_repo_name` view.
 	sqlf.Sprintf("repo_update_jobs.repo_id"),
 	sqlf.Sprintf("repo_update_jobs.priority"),
@@ -215,6 +217,7 @@ func ScanFullRepoUpdateJob(s dbutil.Scanner) (job types.RepoUpdateJob, _ error) 
 		&job.Cancel,
 		&job.RepoID,
 		&job.Priority,
+		&job.OverwriteClone,
 		&dbutil.NullTime{Time: &job.LastFetched},
 		&dbutil.NullTime{Time: &job.LastChanged},
 		&dbutil.NullInt{N: &job.UpdateIntervalSeconds},

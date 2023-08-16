@@ -50,13 +50,13 @@ type JanitorConfig struct {
 	DesiredPercentFree int
 }
 
-func NewJanitor(ctx context.Context, cfg JanitorConfig, db database.DB, rcf *wrexec.RecordingCommandFactory, cloneRepo cloneRepoFunc, logger log.Logger) goroutine.BackgroundRoutine {
+func NewJanitor(ctx context.Context, cfg JanitorConfig, db database.DB, rcf *wrexec.RecordingCommandFactory, logger log.Logger) goroutine.BackgroundRoutine {
 	return goroutine.NewPeriodicGoroutine(
 		actor.WithInternalActor(ctx),
 		goroutine.HandlerFunc(func(ctx context.Context) error {
 			gitserverAddrs := gitserver.NewGitserverAddresses(db, conf.Get())
 			// TODO: Should this return an error?
-			cleanupRepos(ctx, logger, db, rcf, nil, cfg.DesiredPercentFree, cfg.ShardID, cfg.ReposDir, cloneRepo, gitserverAddrs)
+			cleanupRepos(ctx, logger, db, rcf, nil, cfg.DesiredPercentFree, cfg.ShardID, cfg.ReposDir, gitserverAddrs)
 			return nil
 		}),
 		goroutine.WithName("gitserver.janitor"),
@@ -188,8 +188,6 @@ var (
 
 const reposStatsName = "repos-stats.json"
 
-type cloneRepoFunc func(ctx context.Context, repo api.RepoName, opts CloneOptions) (cloneProgress string, err error)
-
 // cleanupRepos walks the repos directory and performs maintenance tasks:
 //
 // 1. Compute the amount of space used by the repo
@@ -212,7 +210,6 @@ func cleanupRepos(
 	desiredPercentFree int,
 	shardID string,
 	reposDir string,
-	cloneRepo cloneRepoFunc,
 	gitServerAddrs gitserver.GitserverAddresses,
 ) {
 	logger = logger.Scoped("cleanup", "repositories cleanup operation")
@@ -393,9 +390,9 @@ func cleanupRepos(
 		}
 
 		// name is the relative path to ReposDir, but without the .git suffix.
-		repo := repoNameFromDir(reposDir, dir)
+		repoName := repoNameFromDir(reposDir, dir)
 		recloneLogger := logger.With(
-			log.String("repo", string(repo)),
+			log.String("repo", string(repoName)),
 			log.Time("cloned", recloneTime),
 			log.String("reason", reason),
 		)
@@ -409,9 +406,12 @@ func cleanupRepos(
 			recloneLogger.Warn("setting backed off re-clone time failed", log.Error(err))
 		}
 
-		cmdCtx, cancel := context.WithTimeout(ctx, conf.GitLongCommandTimeout())
-		defer cancel()
-		if _, err := cloneRepo(cmdCtx, repo, CloneOptions{Block: true, Overwrite: true}); err != nil {
+		repo, err := db.Repos().GetByName(ctx, repoName)
+		if err != nil {
+			return true, err
+		}
+		_, _, err = db.RepoUpdateJobs().Create(ctx, database.RepoUpdateJobOpts{RepoID: repo.ID, OverwriteClone: true})
+		if err != nil {
 			return true, err
 		}
 		reposRecloned.Inc()

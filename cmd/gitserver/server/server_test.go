@@ -176,6 +176,18 @@ func TestExecRequest(t *testing.T) {
 	db := database.NewMockDB()
 	gr := database.NewMockGitserverRepoStore()
 	db.GitserverReposFunc.SetDefaultReturn(gr)
+
+	// We need to save the repo names which are used to query repo ID from the db so
+	// that we can use them for `server.CloneRepo` calls.
+	repoCloneQueue := []api.RepoName{}
+	currentRepoIdx := 0
+	repos := database.NewMockRepoStore()
+	repos.GetByNameFunc.SetDefaultHook(func(_ context.Context, name api.RepoName) (*types.Repo, error) {
+		repoCloneQueue = append(repoCloneQueue, name)
+		return &types.Repo{Name: name}, nil
+	})
+	db.ReposFunc.SetDefaultReturn(repos)
+
 	s := &Server{
 		Logger:            logtest.Scoped(t),
 		ObservationCtx:    observation.TestContextTB(t),
@@ -191,6 +203,16 @@ func TestExecRequest(t *testing.T) {
 		RecordingCommandFactory: wrexec.NewNoOpRecordingCommandFactory(),
 	}
 	h := s.Handler()
+
+	// To continue db mocking, we need to have a server instance.
+	repoUpdateJobs := database.NewMockRepoUpdateJobStore()
+	repoUpdateJobs.CreateFunc.SetDefaultHook(func(ctx context.Context, opts database.RepoUpdateJobOpts) (types.RepoUpdateJob, bool, error) {
+		// We need to return this error as if we just did a sync clone.
+		_, err := s.CloneRepo(ctx, repoCloneQueue[currentRepoIdx], CloneOptions{Overwrite: opts.OverwriteClone})
+		currentRepoIdx++
+		return types.RepoUpdateJob{}, true, err
+	})
+	db.RepoUpdateJobsFunc.SetDefaultReturn(repoUpdateJobs)
 
 	origRepoCloned := repoCloned
 	repoCloned = func(dir common.GitDir) bool {
@@ -715,7 +737,6 @@ func makeTestServer(ctx context.Context, t *testing.T, repoDir, remote string, d
 	logger := logtest.Scoped(t)
 	obctx := observation.TestContextTB(t)
 
-	cloneQueue := NewCloneQueue(obctx, list.New())
 	s := &Server{
 		Logger:           logger,
 		ObservationCtx:   obctx,
@@ -725,7 +746,6 @@ func makeTestServer(ctx context.Context, t *testing.T, repoDir, remote string, d
 			return NewGitRepoSyncer(wrexec.NewNoOpRecordingCommandFactory()), nil
 		},
 		DB:                      db,
-		CloneQueue:              cloneQueue,
 		ctx:                     ctx,
 		locker:                  &RepositoryLocker{},
 		cloneLimiter:            limiter.NewMutable(1),
@@ -736,9 +756,6 @@ func makeTestServer(ctx context.Context, t *testing.T, repoDir, remote string, d
 		DeduplicatedForksSet:    types.NewRepoURICache(nil),
 	}
 
-	p := s.NewClonePipeline(logtest.Scoped(t), cloneQueue)
-	p.Start()
-	t.Cleanup(p.Stop)
 	return s
 }
 
@@ -992,7 +1009,7 @@ func testHandleRepoDelete(t *testing.T, deletedInDB bool) {
 
 	// This will perform an initial clone
 	req := newRequest("GET", "/repo-update", bytes.NewReader(body))
-	s.handleRepoUpdate(rr, req)
+	_, _ = s.HandleRepoUpdateRequest(ctx, &updateReq, logger)
 
 	size := dirSize(s.dir(repoName).Path("."))
 	want := &types.GitserverRepo{
@@ -1093,14 +1110,8 @@ func TestHandleRepoUpdate(t *testing.T) {
 	// We need the side effects here
 	_ = s.Handler()
 
-	rr := httptest.NewRecorder()
-
 	updateReq := protocol.RepoUpdateRequest{
 		Repo: repoName,
-	}
-	body, err := json.Marshal(updateReq)
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	// Confirm that failing to clone the repo stores the error
@@ -1108,8 +1119,7 @@ func TestHandleRepoUpdate(t *testing.T) {
 	s.GetRemoteURLFunc = func(ctx context.Context, name api.RepoName) (string, error) {
 		return "https://invalid.example.com/", nil
 	}
-	req := newRequest("GET", "/repo-update", bytes.NewReader(body))
-	s.handleRepoUpdate(rr, req)
+	_, _ = s.HandleRepoUpdateRequest(ctx, &updateReq, logger)
 
 	size := dirSize(s.dir(repoName).Path("."))
 	want := &types.GitserverRepo{
@@ -1138,8 +1148,7 @@ func TestHandleRepoUpdate(t *testing.T) {
 
 	// This will perform an initial clone
 	s.GetRemoteURLFunc = oldRemoveURLFunc
-	req = newRequest("GET", "/repo-update", bytes.NewReader(body))
-	s.handleRepoUpdate(rr, req)
+	_, _ = s.HandleRepoUpdateRequest(ctx, &updateReq, logger)
 
 	size = dirSize(s.dir(repoName).Path("."))
 	want = &types.GitserverRepo{
@@ -1166,8 +1175,7 @@ func TestHandleRepoUpdate(t *testing.T) {
 	t.Cleanup(func() { doBackgroundRepoUpdateMock = nil })
 
 	// This will trigger an update since the repo is already cloned
-	req = newRequest("GET", "/repo-update", bytes.NewReader(body))
-	s.handleRepoUpdate(rr, req)
+	_, _ = s.HandleRepoUpdateRequest(ctx, &updateReq, logger)
 
 	want = &types.GitserverRepo{
 		RepoID:        dbRepo.ID,
@@ -1190,8 +1198,7 @@ func TestHandleRepoUpdate(t *testing.T) {
 	doBackgroundRepoUpdateMock = nil
 
 	// This will trigger an update since the repo is already cloned
-	req = newRequest("GET", "/repo-update", bytes.NewReader(body))
-	s.handleRepoUpdate(rr, req)
+	_, _ = s.HandleRepoUpdateRequest(ctx, &updateReq, logger)
 
 	want = &types.GitserverRepo{
 		RepoID:        dbRepo.ID,
